@@ -1,0 +1,53 @@
+{
+  "name": "codex-composer",
+  "version": "0.1.0",
+  "description": "Codex MCP plugin for using Cursor Composer 2.5 as a safe coding and UI specialist.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Kamell Perry",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kamellperry/codex-composer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kamellperry/codex-composer/issues"
+  },
+  "homepage": "https://github.com/kamellperry/codex-composer#readme",
+  "keywords": [
+    "codex-plugin",
+    "mcp",
+    "cursor",
+    "composer",
+    "composer-2.5"
+  ],
+  "bin": {
+    "codex-composer": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "vitest run",
+    "verify": "bun run typecheck && bun test && bun run build",
+    "smoke:health": "bun run build && node dist/cli-smoke.js health",
+    "smoke:ask": "bun run build && node dist/cli-smoke.js ask",
+    "smoke:patch": "bun run build && node dist/cli-smoke.js patch"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.17",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  },
+  "files": [
+    "dist",
+    "src",
+    ".codex-plugin",
+    ".mcp.json",
+    "README.md",
+    "LICENSE"
+  ]
+}
