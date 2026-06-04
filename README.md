@@ -5,13 +5,38 @@ Codex Composer is a local Codex MCP plugin that lets Codex ask Cursor Composer 2
 ## What it does
 
 - `composer_health`: checks local SDK availability, auth, and optional model access.
-- `composer_ask`: asks Composer for advice against a repo snapshot and optional files.
-- `composer_patch`: runs Composer in a temporary sandbox and returns a diff for Codex to inspect and apply.
+- `composer_ask`: asks Composer for design, critique, architecture, or implementation guidance without editing files.
+- `composer_patch`: asks Composer for a scoped sandboxed change and returns a diff plus safe text artifacts.
+- `composer_agent`: delegates a larger sandboxed implementation objective and returns diff, artifacts, and evidence.
 - `composer_ui_review`: sends screenshots/images plus context for UI and design critique.
 
 ## Safety model
 
-Composer runs inside a temporary copy of the requested workspace. The real repo is not used as the Cursor agent's writable directory. Patch mode returns a diff; Codex or a human applies it separately.
+Composer runs inside a temporary copy of the requested workspace. The real repo is not used as the Cursor agent's writable directory. Patch and agent modes return proposed work; Codex or a human applies it separately.
+
+Use the tools this way:
+
+- `composer_ask`: taste/design read, critique, spec, or second-model planning.
+- `composer_patch`: quick scoped change, especially when the files are known.
+- `composer_agent`: larger objective, greenfield/new-file work, or multi-file UI implementation.
+- `composer_ui_review`: screenshot or visual artifact review.
+
+Patch and agent output includes:
+
+- `diff`: git diff from the sandbox.
+- `changedFiles`: files changed in the sandbox, parsed with `git status --porcelain=v1 -z`.
+- `artifacts`: safe text contents for created/modified files under the size cap.
+- `omittedArtifacts`: binary, deleted, oversized, symlink, outside-sandbox, or secret-like files.
+- `evidence`: run IDs, model/status/duration, copied/omitted files, changed files, policy warnings, timeout/cancel state, and safe tool-call summaries.
+
+Artifacts are intentionally conservative. If a changed file appears to contain an API key or similar secret, the tool omits the artifact instead of returning redacted content that might be applied accidentally.
+
+`commandPolicy` controls command use:
+
+- `advisory-forbid` (default): prompts Composer not to run shell, terminal, package-manager, build, test, or formatter commands. The current Cursor SDK does not expose a hard command-deny switch, so detected command-like tool use is reported as a policy violation.
+- `allow`: explicitly permits commands inside the sandbox.
+
+Set `keepSandbox: true` to keep the temporary sandbox and return its path for debugging. Otherwise the sandbox is deleted after diff/artifact collection.
 
 Auth resolution order:
 
@@ -42,6 +67,8 @@ node dist/server.js
 bun run verify
 bun run smoke:health
 bun run smoke:ask
+bun run smoke:patch
+bun run smoke:patch-empty
 ```
 
-`smoke:ask` sends a live Composer prompt, so it requires a valid Cursor SDK API key.
+The smoke commands send live Composer prompts, so they require a valid Cursor SDK API key.
