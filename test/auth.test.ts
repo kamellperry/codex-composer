@@ -9,8 +9,7 @@ describe("resolveCursorAuth", () => {
   it("prefers CURSOR_API_KEY", () => {
     const result = resolveCursorAuth({
       env: { CURSOR_API_KEY: "cursor_env_key" },
-      cwd: "/tmp/none",
-      homeDir: "/tmp/none"
+      cwd: "/tmp/none"
     });
 
     expect(result.ok).toBe(true);
@@ -18,24 +17,34 @@ describe("resolveCursorAuth", () => {
     expect(result.apiKey).toBe("cursor_env_key");
   });
 
-  it("uses local .env before Pi auth", () => {
+  it("uses local .env when shell env is absent", () => {
     const root = mkdtempSync(join(tmpdir(), "codex-composer-auth-"));
-    const home = mkdtempSync(join(tmpdir(), "codex-composer-home-"));
-    mkdirSync(join(home, ".pi", "agent"), { recursive: true });
     writeFileSync(join(root, ".env"), "CURSOR_API_KEY=cursor_local_key\n");
-    writeFileSync(
-      join(home, ".pi", "agent", "auth.json"),
-      JSON.stringify({ cursor: { key: "cursor_pi_key" } })
-    );
 
-    const result = resolveCursorAuth({ env: {}, cwd: root, homeDir: home });
+    const result = resolveCursorAuth({ env: {}, cwd: root });
 
     expect(result.ok).toBe(true);
     expect(result.source).toBe("local-env");
     expect(result.apiKey).toBe("cursor_local_key");
   });
 
-  it("falls back to Pi cursor auth", () => {
+  it("uses CODEX_COMPOSER_ENV_FILE before local .env", () => {
+    const root = mkdtempSync(join(tmpdir(), "codex-composer-auth-"));
+    const privateEnv = join(root, "private.env");
+    writeFileSync(join(root, ".env"), "CURSOR_API_KEY=cursor_local_key\n");
+    writeFileSync(privateEnv, "CURSOR_API_KEY=cursor_private_key\n");
+
+    const result = resolveCursorAuth({
+      env: { CODEX_COMPOSER_ENV_FILE: privateEnv },
+      cwd: root
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.source).toBe("env-file");
+    expect(result.apiKey).toBe("cursor_private_key");
+  });
+
+  it("does not read Pi auth as a fallback", () => {
     const home = mkdtempSync(join(tmpdir(), "codex-composer-home-"));
     mkdirSync(join(home, ".pi", "agent"), { recursive: true });
     writeFileSync(
@@ -43,10 +52,10 @@ describe("resolveCursorAuth", () => {
       JSON.stringify({ cursor: { key: "cursor_pi_key" } })
     );
 
-    const result = resolveCursorAuth({ env: {}, cwd: "/tmp/none", homeDir: home });
+    const result = resolveCursorAuth({ env: {}, cwd: home });
 
-    expect(result.ok).toBe(true);
-    expect(result.source).toBe("pi-auth");
-    expect(result.apiKey).toBe("cursor_pi_key");
+    expect(result.ok).toBe(false);
+    expect(result.source).toBe("missing");
+    expect(result.apiKey).toBeUndefined();
   });
 });

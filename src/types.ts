@@ -2,7 +2,7 @@ export type ComposerMode = "agent" | "plan";
 
 export interface AuthResult {
   ok: boolean;
-  source: "env" | "local-env" | "pi-auth" | "missing";
+  source: "env" | "env-file" | "local-env" | "missing";
   apiKey?: string;
   message: string;
 }

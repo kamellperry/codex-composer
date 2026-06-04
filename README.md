@@ -16,10 +16,12 @@ Composer runs inside a temporary copy of the requested workspace. The real repo 
 Auth resolution order:
 
 1. `CURSOR_API_KEY`
-2. local `.env`
-3. Pi's existing `~/.pi/agent/auth.json` cursor key
+2. `CODEX_COMPOSER_ENV_FILE=/path/to/.env`
+3. local `.env`
 
 Keys are never printed by the tools.
+
+For a distributed Codex plugin install, set `CURSOR_API_KEY` in the environment that launches Codex. For local installs, prefer `CODEX_COMPOSER_ENV_FILE` if the plugin runs from a cache directory. The `.env` file is intended for local development and smoke tests from this checkout; it is ignored by Git and should not be packaged.
 
 ## Install
 
