@@ -1,6 +1,7 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { SandboxOptions, SandboxResult } from "./types.js";
 import { isInside } from "./file-context.js";
@@ -38,6 +39,12 @@ export async function createSandbox(options: SandboxOptions): Promise<SandboxRes
       return false;
     }
 
+    const linkStat = lstatSync(absolute);
+    if (linkStat.isSymbolicLink()) {
+      omittedFiles.push(`${rel} (symlink omitted)`);
+      return false;
+    }
+
     const stat = statSync(absolute);
     if (copiedBytes + stat.size > maxBytes) {
       omittedFiles.push(`${rel} (byte limit reached)`);
@@ -64,15 +71,31 @@ export async function createSandbox(options: SandboxOptions): Promise<SandboxRes
         omittedFiles.push(`${file} (missing)`);
         continue;
       }
+      const linkStat = lstatSync(absolute);
+      if (linkStat.isSymbolicLink()) {
+        omittedFiles.push(`${file} (symlink omitted)`);
+        continue;
+      }
       const stat = statSync(absolute);
       if (stat.isDirectory()) {
         walk(absolute, sourceDir, copyFile, omittedFiles, maxFiles, maxBytes, () => copiedFiles.length, () => copiedBytes);
       } else if (stat.isFile()) {
         copyFile(absolute, rel);
+      } else {
+        omittedFiles.push(`${file} (not a regular file)`);
       }
     }
   } else {
-    walk(sourceDir, sourceDir, copyFile, omittedFiles, maxFiles, maxBytes, () => copiedFiles.length, () => copiedBytes);
+    const gitFiles = listGitProjectFiles(sourceDir);
+    if (gitFiles) {
+      for (const rel of gitFiles) {
+        const absolute = resolve(sourceDir, rel);
+        if (!existsSync(absolute)) continue;
+        copyFile(absolute, rel);
+      }
+    } else {
+      walk(sourceDir, sourceDir, copyFile, omittedFiles, maxFiles, maxBytes, () => copiedFiles.length, () => copiedBytes);
+    }
   }
 
   return {
@@ -94,13 +117,21 @@ function walk(
   byteCount: () => number
 ): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (EXCLUDED_NAMES.has(entry.name)) continue;
-
     const absolute = join(dir, entry.name);
     const rel = relative(root, absolute);
 
+    if (EXCLUDED_NAMES.has(entry.name)) {
+      omittedFiles.push(`${rel} (ignored)`);
+      continue;
+    }
+
     if (!absolute.startsWith(`${resolve(root)}${sep}`) && absolute !== resolve(root)) {
       omittedFiles.push(`${rel} (outside source dir)`);
+      continue;
+    }
+
+    if (entry.isSymbolicLink()) {
+      omittedFiles.push(`${rel} (symlink omitted)`);
       continue;
     }
 
@@ -109,11 +140,30 @@ function walk(
       continue;
     }
 
-    if (!entry.isFile()) continue;
+    if (!entry.isFile()) {
+      omittedFiles.push(`${rel} (not a regular file)`);
+      continue;
+    }
     if (fileCount() >= maxFiles || byteCount() >= maxBytes) {
       omittedFiles.push(`${rel} (sandbox budget reached)`);
       continue;
     }
     copyFile(absolute, rel);
+  }
+}
+
+function listGitProjectFiles(sourceDir: string): string[] | undefined {
+  try {
+    const output = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+      cwd: sourceDir,
+      encoding: "utf8",
+      maxBuffer: 20 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+
+    const files = output.split("\0").filter(Boolean);
+    return files.length ? files : [];
+  } catch {
+    return undefined;
   }
 }

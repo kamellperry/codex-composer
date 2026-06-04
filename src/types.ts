@@ -1,4 +1,5 @@
 export type ComposerMode = "agent" | "plan";
+export type CommandPolicy = "advisory-forbid" | "allow";
 
 export interface AuthResult {
   ok: boolean;
@@ -13,6 +14,8 @@ export interface CursorRunOptions {
   model?: string;
   mode?: ComposerMode;
   images?: ImageInput[];
+  timeoutMs?: number;
+  commandPolicy?: CommandPolicy;
 }
 
 export interface CursorRunResult {
@@ -22,6 +25,21 @@ export interface CursorRunResult {
   status?: string;
   model?: string;
   durationMs?: number;
+  timedOut?: boolean;
+  cancelled?: boolean;
+  evidence?: RunEvidence;
+}
+
+export interface EvidenceEvent {
+  type: string;
+  name?: string;
+  status?: string;
+  message?: string;
+}
+
+export interface RunEvidence {
+  events: EvidenceEvent[];
+  policyViolations: string[];
 }
 
 export interface ImageInput {
@@ -41,4 +59,32 @@ export interface SandboxResult {
   copiedFiles: string[];
   omittedFiles: string[];
   copiedBytes: number;
+}
+
+export type ChangedFileStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed"
+  | "copied"
+  | "untracked"
+  | "unknown";
+
+export interface ChangedFile {
+  path: string;
+  status: ChangedFileStatus;
+  originalPath?: string;
+}
+
+export interface FileArtifact {
+  path: string;
+  status: ChangedFileStatus;
+  content: string;
+  sizeBytes: number;
+}
+
+export interface OmittedArtifact {
+  path: string;
+  status?: ChangedFileStatus;
+  reason: string;
 }

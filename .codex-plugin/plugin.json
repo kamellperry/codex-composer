@@ -1,6 +1,6 @@
 {
   "name": "codex-composer",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Use Cursor Composer 2.5 from Codex as a safe coding and UI specialist.",
   "author": {
     "name": "Kamell Perry",
@@ -19,12 +19,13 @@
   "interface": {
     "displayName": "Codex Composer",
     "shortDescription": "Use Cursor Composer 2.5 from Codex",
-    "longDescription": "Codex Composer exposes Cursor Composer 2.5 as a local MCP tool for code advice, UI review, and sandboxed patch proposals. Composer never edits the real working tree directly in v1.",
+    "longDescription": "Codex Composer exposes Cursor Composer 2.5 as a local MCP tool for code advice, UI review, sandboxed patch proposals, and artifact-backed implementation delegation. Composer never edits the real working tree directly.",
     "developerName": "Kamell Perry",
     "category": "Productivity",
     "capabilities": [
       "Composer 2.5 code advice",
       "Sandboxed patch proposals",
+      "Artifact-backed Composer agent",
       "UI screenshot review"
     ],
     "websiteURL": "https://github.com/kamellperry/codex-composer",

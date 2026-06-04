@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { handleAsk, handleHealth, handlePatch } from "./tools.js";
 
 const command = process.argv[2] ?? "health";
@@ -24,13 +25,41 @@ if (command === "health") {
     cwd: fixture,
     prompt: "Change the README heading to '# Updated Fixture'. Do not change anything else.",
     files: ["README.md"],
-    model: "composer-2.5"
+    model: "composer-2.5",
+    commandPolicy: "advisory-forbid",
+    includeArtifacts: true,
+    maxArtifactBytes: 256 * 1024,
+    timeoutMs: 300_000,
+    keepSandbox: false
   });
   const after = readFileSync(join(fixture, "README.md"), "utf8");
   console.log(
     JSON.stringify(
       {
         sourceUnchanged: before === after,
+        result: JSON.parse(result.content[0].text)
+      },
+      null,
+      2
+    )
+  );
+} else if (command === "patch-empty") {
+  const fixture = mkdtempSync(join(tmpdir(), "codex-composer-empty-smoke-"));
+  const result = await handlePatch({
+    cwd: fixture,
+    prompt: "Create a file named CODEX_COMPOSER_EMPTY_OK.txt containing exactly CODEX_COMPOSER_EMPTY_OK and a trailing newline.",
+    files: [],
+    model: "composer-2.5",
+    commandPolicy: "advisory-forbid",
+    includeArtifacts: true,
+    maxArtifactBytes: 256 * 1024,
+    timeoutMs: 300_000,
+    keepSandbox: false
+  });
+  console.log(
+    JSON.stringify(
+      {
+        sourceUnchanged: !existsSync(join(fixture, "CODEX_COMPOSER_EMPTY_OK.txt")),
         result: JSON.parse(result.content[0].text)
       },
       null,

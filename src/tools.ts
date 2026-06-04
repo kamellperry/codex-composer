@@ -3,10 +3,10 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { buildFileContext } from "./file-context.js";
 import { createSandbox } from "./sandbox.js";
-import { collectDiff, initializeGitBaseline } from "./diff.js";
 import { composerHealth, runComposer } from "./cursor.js";
-import { askPrompt, patchPrompt, uiReviewPrompt } from "./prompts.js";
+import { agentPrompt, askPrompt, patchPrompt, uiReviewPrompt } from "./prompts.js";
 import { safeError } from "./redact.js";
+import { type ComposerRunner, runSandboxedChange } from "./sandboxed-run.js";
 
 export const healthSchema = {
   cwd: z.string().optional(),
@@ -26,7 +26,24 @@ export const patchSchema = {
   cwd: z.string().default(process.cwd()),
   prompt: z.string().min(1),
   files: z.array(z.string()).default([]),
-  model: z.string().default("composer-2.5")
+  model: z.string().default("composer-2.5"),
+  commandPolicy: z.enum(["advisory-forbid", "allow"]).default("advisory-forbid"),
+  includeArtifacts: z.boolean().default(true),
+  maxArtifactBytes: z.number().int().positive().default(256 * 1024),
+  timeoutMs: z.number().int().positive().default(300_000),
+  keepSandbox: z.boolean().default(false)
+};
+
+export const agentSchema = {
+  cwd: z.string().default(process.cwd()),
+  objective: z.string().min(1),
+  files: z.array(z.string()).default([]),
+  model: z.string().default("composer-2.5"),
+  commandPolicy: z.enum(["advisory-forbid", "allow"]).default("advisory-forbid"),
+  includeArtifacts: z.boolean().default(true),
+  maxArtifactBytes: z.number().int().positive().default(256 * 1024),
+  timeoutMs: z.number().int().positive().default(600_000),
+  keepSandbox: z.boolean().default(false)
 };
 
 export const uiReviewSchema = {
@@ -82,40 +99,69 @@ export async function handleAsk(input: z.infer<z.ZodObject<typeof askSchema>>) {
 }
 
 export async function handlePatch(input: z.infer<z.ZodObject<typeof patchSchema>>) {
+  return handlePatchWithRunner(input);
+}
+
+export async function handlePatchWithRunner(
+  input: z.infer<z.ZodObject<typeof patchSchema>>,
+  runner?: ComposerRunner
+) {
   const cwd = resolve(input.cwd);
   assertDirectory(cwd);
 
   const context = buildFileContext({ cwd, files: input.files });
-  const sandbox = await createSandbox({ sourceDir: cwd, files: input.files });
+  const result = await runSandboxedChange({
+    cwd,
+    files: input.files,
+    model: input.model,
+    commandPolicy: input.commandPolicy,
+    includeArtifacts: input.includeArtifacts,
+    maxArtifactBytes: input.maxArtifactBytes,
+    timeoutMs: input.timeoutMs,
+    keepSandbox: input.keepSandbox,
+    runner,
+    prompt: patchPrompt({
+      prompt: input.prompt,
+      cwd,
+      commandPolicy: input.commandPolicy,
+      fileContext: context.block
+    })
+  });
 
-  try {
-    await initializeGitBaseline(sandbox.sandboxDir);
-    const result = await runComposer({
-      cwd: sandbox.sandboxDir,
-      model: input.model,
-      mode: "agent",
-      prompt: patchPrompt({
-        prompt: input.prompt,
-        cwd,
-        fileContext: context.block
-      })
-    });
-    const diff = await collectDiff(sandbox.sandboxDir);
+  return jsonContent(result.value, result.isError);
+}
 
-    return jsonContent({
-      ...result,
-      diff,
-      changed: diff.length > 0,
-      sandbox: sandboxSummary(sandbox),
-      includedFiles: context.includedFiles,
-      omittedFiles: [...context.omittedFiles, ...sandbox.omittedFiles],
-      note: "Diff was produced from a temporary sandbox. The real working tree was not modified."
-    });
-  } catch (error) {
-    return jsonContent({ error: safeError(error) }, true);
-  } finally {
-    cleanupSandbox(sandbox.sandboxDir);
-  }
+export async function handleAgent(input: z.infer<z.ZodObject<typeof agentSchema>>) {
+  return handleAgentWithRunner(input);
+}
+
+export async function handleAgentWithRunner(
+  input: z.infer<z.ZodObject<typeof agentSchema>>,
+  runner?: ComposerRunner
+) {
+  const cwd = resolve(input.cwd);
+  assertDirectory(cwd);
+
+  const context = buildFileContext({ cwd, files: input.files });
+  const result = await runSandboxedChange({
+    cwd,
+    files: input.files,
+    model: input.model,
+    commandPolicy: input.commandPolicy,
+    includeArtifacts: input.includeArtifacts,
+    maxArtifactBytes: input.maxArtifactBytes,
+    timeoutMs: input.timeoutMs,
+    keepSandbox: input.keepSandbox,
+    runner,
+    prompt: agentPrompt({
+      objective: input.objective,
+      cwd,
+      commandPolicy: input.commandPolicy,
+      fileContext: context.block
+    })
+  });
+
+  return jsonContent(result.value, result.isError);
 }
 
 export async function handleUiReview(input: z.infer<z.ZodObject<typeof uiReviewSchema>>) {

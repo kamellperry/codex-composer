@@ -1,6 +1,6 @@
 {
   "name": "codex-composer",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Codex MCP plugin for using Cursor Composer 2.5 as a safe coding and UI specialist.",
   "type": "module",
   "license": "MIT",
@@ -30,7 +30,8 @@
     "verify": "bun run typecheck && bun test && bun run build",
     "smoke:health": "bun run build && node dist/cli-smoke.js health",
     "smoke:ask": "bun run build && node dist/cli-smoke.js ask",
-    "smoke:patch": "bun run build && node dist/cli-smoke.js patch"
+    "smoke:patch": "bun run build && node dist/cli-smoke.js patch",
+    "smoke:patch-empty": "bun run build && node dist/cli-smoke.js patch-empty"
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.17",

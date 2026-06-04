@@ -2,7 +2,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
+  agentSchema,
   askSchema,
+  handleAgent,
   handleAsk,
   handleHealth,
   handlePatch,
@@ -14,7 +16,7 @@ import {
 
 const server = new McpServer({
   name: "codex-composer",
-  version: "0.1.0"
+  version: "0.2.0"
 });
 
 server.registerTool(
@@ -45,6 +47,16 @@ server.registerTool(
     inputSchema: patchSchema
   },
   handlePatch
+);
+
+server.registerTool(
+  "composer_agent",
+  {
+    title: "Composer agent",
+    description: "Delegate a larger implementation objective to Composer in a temporary sandbox and return diff, artifacts, and evidence.",
+    inputSchema: agentSchema
+  },
+  handleAgent
 );
 
 server.registerTool(

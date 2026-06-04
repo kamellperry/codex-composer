@@ -2,6 +2,8 @@ const SECRET_ASSIGNMENT_PATTERN =
   /(CURSOR_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|DEEPSEEK_API_KEY|OPENROUTER_API_KEY)\s*=\s*["']?[^"'\s]+/gi;
 
 const CURSOR_KEY_PATTERN = /\b(cursor_[A-Za-z0-9._-]{12,}|key_[A-Za-z0-9._-]{12,})\b/g;
+const SECRET_LIKE_PATTERN =
+  /(CURSOR_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|DEEPSEEK_API_KEY|OPENROUTER_API_KEY)\s*=\s*["']?[^"'\s]+|\b(cursor_[A-Za-z0-9._-]{12,}|key_[A-Za-z0-9._-]{12,})\b/i;
 
 export function redactSecrets(input: unknown, extraSecrets: string[] = []): string {
   let text = typeof input === "string" ? input : JSON.stringify(input, null, 2);
@@ -21,4 +23,8 @@ export function safeError(error: unknown, extraSecrets: string[] = []): string {
     return redactSecrets(`${error.name}: ${error.message}`, extraSecrets);
   }
   return redactSecrets(error, extraSecrets);
+}
+
+export function containsSecretLikeContent(input: string): boolean {
+  return SECRET_LIKE_PATTERN.test(input);
 }
