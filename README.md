@@ -5,7 +5,7 @@ Codex Composer is a local Codex MCP plugin that lets Codex ask Cursor Composer 2
 ## What it does
 
 - `composer_health`: checks local SDK availability, auth, and optional model access.
-- `composer_ask`: asks Composer for design, critique, architecture, or implementation guidance without editing files.
+- `composer_ask`: asks Composer for design, critique, architecture, or implementation guidance without editing files, and fails loudly if Composer only returns wrapper text.
 - `composer_patch`: asks Composer for a scoped sandboxed change and returns a diff plus safe text artifacts.
 - `composer_agent`: delegates a larger sandboxed implementation objective and returns diff, artifacts, and evidence.
 - `composer_ui_review`: sends screenshots/images plus context for UI and design critique.
@@ -28,6 +28,15 @@ Patch and agent output includes:
 - `artifacts`: safe text contents for created/modified files under the size cap.
 - `omittedArtifacts`: binary, deleted, oversized, symlink, outside-sandbox, or secret-like files.
 - `evidence`: run IDs, model/status/duration, copied/omitted files, changed files, policy warnings, timeout/cancel state, and safe tool-call summaries.
+
+Advisory output includes:
+
+- `text`: the best extracted Composer answer.
+- `outputSource`: where that answer came from, such as `run-result`, `conversation-assistant`, or `conversation-createPlan`.
+- `outputCandidates`: concise candidate diagnostics without duplicating hidden transcript content.
+- `outputRejectedReason`: present when Composer finished but did not produce usable guidance.
+
+Composer sometimes stores useful plan-mode output in SDK conversation steps rather than `run.result`. The plugin extracts the final assistant text first and falls back to `createPlan` plan text when the direct result is only a wrapper sentence. `composer_ask` and `composer_ui_review` return an MCP error when no useful advisory answer can be extracted.
 
 Artifacts are intentionally conservative. If a changed file appears to contain an API key or similar secret, the tool omits the artifact instead of returning redacted content that might be applied accidentally.
 
@@ -67,6 +76,7 @@ node dist/server.js
 bun run verify
 bun run smoke:health
 bun run smoke:ask
+bun run smoke:ask-design
 bun run smoke:patch
 bun run smoke:patch-empty
 ```
