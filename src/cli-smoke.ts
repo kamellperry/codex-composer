@@ -15,8 +15,30 @@ if (command === "health") {
     prompt: "Reply exactly CODEX_COMPOSER_OK and nothing else.",
     files: [],
     model: "composer-2.5",
-    mode: "plan"
+    mode: "plan",
+    timeoutMs: 120_000,
+    keepSandbox: false
   });
+  console.log(result.content[0].text);
+} else if (command === "ask-design") {
+  const result = await handleAsk({
+    cwd: process.cwd(),
+    prompt: [
+      "Give concise UI guidance for a paid consumer app dashboard.",
+      "Return three short sections: Principle, Layout, Avoid.",
+      "Do not edit files."
+    ].join("\n"),
+    files: ["README.md"],
+    model: "composer-2.5",
+    mode: "plan",
+    timeoutMs: 120_000,
+    keepSandbox: false
+  });
+  const parsed = JSON.parse(result.content[0].text);
+  if (result.isError || parsed.outputUsable === false || !/principle|layout|avoid/i.test(parsed.text ?? "")) {
+    console.log(result.content[0].text);
+    throw new Error("Composer design smoke did not return usable design guidance.");
+  }
   console.log(result.content[0].text);
 } else if (command === "patch") {
   const fixture = join(process.cwd(), "test", "fixtures", "simple-repo");

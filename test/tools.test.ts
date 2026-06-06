@@ -1,13 +1,17 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   agentSchema,
+  askSchema,
+  handleAskWithRunner,
   handleAgentWithRunner,
   handlePatchWithRunner,
-  patchSchema
+  handleUiReviewWithRunner,
+  patchSchema,
+  uiReviewSchema
 } from "../src/tools.js";
 import type { ComposerRunner } from "../src/sandboxed-run.js";
 
@@ -24,6 +28,25 @@ describe("tool schemas", () => {
     expect(parsed.keepSandbox).toBe(false);
   });
 
+  it("applies ask defaults for timeout and sandbox cleanup", () => {
+    const parsed = z.object(askSchema).parse({
+      cwd: "/tmp",
+      prompt: "review this"
+    });
+
+    expect(parsed.timeoutMs).toBe(120_000);
+    expect(parsed.keepSandbox).toBe(false);
+  });
+
+  it("applies UI review timeout defaults", () => {
+    const parsed = z.object(uiReviewSchema).parse({
+      prompt: "review this",
+      images: [{ path: "/tmp/screen.png" }]
+    });
+
+    expect(parsed.timeoutMs).toBe(120_000);
+  });
+
   it("applies agent defaults", () => {
     const parsed = z.object(agentSchema).parse({
       cwd: "/tmp",
@@ -34,6 +57,122 @@ describe("tool schemas", () => {
     expect(parsed.includeArtifacts).toBe(true);
     expect(parsed.timeoutMs).toBe(600_000);
     expect(parsed.keepSandbox).toBe(false);
+  });
+});
+
+describe("advisory tool handlers", () => {
+  it("composer_ask returns useful advisory text and can keep its sandbox for debugging", async () => {
+    const root = mkdtempSync(join(tmpdir(), "codex-composer-ask-"));
+    const runner: ComposerRunner = async (options) => {
+      return {
+        text: "Use one status line, one account row, and one recent-check timeline.",
+        outputSource: "conversation-assistant",
+        outputUsable: true,
+        outputCandidates: [{ source: "conversation-assistant", length: 66, usable: true }],
+        runId: "run_ask",
+        agentId: "agent_ask",
+        status: "finished",
+        model: options.model,
+        timedOut: false,
+        cancelled: false
+      };
+    };
+
+    const response = await handleAskWithRunner(
+      {
+        cwd: root,
+        prompt: "Give dashboard direction",
+        files: [],
+        model: "composer-2.5",
+        mode: "plan",
+        timeoutMs: 120_000,
+        keepSandbox: true
+      },
+      runner
+    );
+    const value = JSON.parse(response.content[0].text);
+
+    expect(response.isError).toBe(false);
+    expect(value.text).toContain("one status line");
+    expect(value.outputSource).toBe("conversation-assistant");
+    expect(value.sandbox.kept).toBe(true);
+    expect(existsSync(value.sandbox.path)).toBe(true);
+
+    rmSync(value.sandbox.path, { recursive: true, force: true });
+  });
+
+  it("composer_ask marks wrapper-only Composer output as an error instead of a successful answer", async () => {
+    const root = mkdtempSync(join(tmpdir(), "codex-composer-ask-wrapper-"));
+    const runner: ComposerRunner = async (options) => {
+      return {
+        text: "The request is design guidance for Rune mockups, not code — I'll synthesize the app context.",
+        outputUsable: false,
+        outputRejectedReason: "Composer finished but only produced wrapper, redacted, or empty output.",
+        outputCandidates: [{ source: "run-result", length: 88, usable: false, reason: "wrapper-only" }],
+        runId: "run_wrapper",
+        agentId: "agent_wrapper",
+        status: "finished",
+        model: options.model,
+        timedOut: false,
+        cancelled: false
+      };
+    };
+
+    const response = await handleAskWithRunner(
+      {
+        cwd: root,
+        prompt: "Give dashboard direction",
+        files: [],
+        model: "composer-2.5",
+        mode: "plan",
+        timeoutMs: 120_000,
+        keepSandbox: false
+      },
+      runner
+    );
+    const value = JSON.parse(response.content[0].text);
+
+    expect(response.isError).toBe(true);
+    expect(value.outputRejectedReason).toContain("wrapper");
+    expect(value.outputCandidates).toContainEqual(
+      expect.objectContaining({
+        source: "run-result",
+        usable: false,
+        reason: "wrapper-only"
+      })
+    );
+  });
+
+  it("composer_ui_review marks unusable Composer output as an error", async () => {
+    const runner: ComposerRunner = async (options) => {
+      return {
+        text: "",
+        outputUsable: false,
+        outputRejectedReason: "Composer finished without producing assistant output.",
+        outputCandidates: [],
+        runId: "run_ui",
+        agentId: "agent_ui",
+        status: "finished",
+        model: options.model,
+        timedOut: false,
+        cancelled: false
+      };
+    };
+
+    const response = await handleUiReviewWithRunner(
+      {
+        prompt: "Review this UI",
+        files: [],
+        images: [{ path: "/tmp/screen.png" }],
+        model: "composer-2.5",
+        timeoutMs: 120_000
+      },
+      runner
+    );
+    const value = JSON.parse(response.content[0].text);
+
+    expect(response.isError).toBe(true);
+    expect(value.outputRejectedReason).toContain("without producing assistant output");
   });
 });
 
