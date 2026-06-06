@@ -1,5 +1,12 @@
 export type ComposerMode = "agent" | "plan";
 export type CommandPolicy = "advisory-forbid" | "allow";
+export type ComposerOutputSource =
+  | "run-result"
+  | "conversation-assistant"
+  | "conversation-createPlan"
+  | "conversation-task"
+  | "stream-assistant"
+  | "stream-task";
 
 export interface AuthResult {
   ok: boolean;
@@ -20,6 +27,10 @@ export interface CursorRunOptions {
 
 export interface CursorRunResult {
   text: string;
+  outputSource?: ComposerOutputSource;
+  outputUsable?: boolean;
+  outputRejectedReason?: string;
+  outputCandidates?: OutputCandidateSummary[];
   runId?: string;
   agentId?: string;
   status?: string;
@@ -40,6 +51,13 @@ export interface EvidenceEvent {
 export interface RunEvidence {
   events: EvidenceEvent[];
   policyViolations: string[];
+}
+
+export interface OutputCandidateSummary {
+  source: ComposerOutputSource;
+  length: number;
+  usable: boolean;
+  reason?: string;
 }
 
 export interface ImageInput {

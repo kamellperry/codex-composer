@@ -19,7 +19,9 @@ export const askSchema = {
   prompt: z.string().min(1),
   files: z.array(z.string()).default([]),
   model: z.string().default("composer-2.5"),
-  mode: z.enum(["agent", "plan"]).default("plan")
+  mode: z.enum(["agent", "plan"]).default("plan"),
+  timeoutMs: z.number().int().positive().default(120_000),
+  keepSandbox: z.boolean().default(false)
 };
 
 export const patchSchema = {
@@ -58,7 +60,8 @@ export const uiReviewSchema = {
       })
     )
     .min(1),
-  model: z.string().default("composer-2.5")
+  model: z.string().default("composer-2.5"),
+  timeoutMs: z.number().int().positive().default(120_000)
 };
 
 export async function handleHealth(input: z.infer<z.ZodObject<typeof healthSchema>>) {
@@ -66,17 +69,26 @@ export async function handleHealth(input: z.infer<z.ZodObject<typeof healthSchem
 }
 
 export async function handleAsk(input: z.infer<z.ZodObject<typeof askSchema>>) {
+  return handleAskWithRunner(input);
+}
+
+export async function handleAskWithRunner(
+  input: z.infer<z.ZodObject<typeof askSchema>>,
+  runner: ComposerRunner = runComposer
+) {
   const cwd = resolve(input.cwd);
   assertDirectory(cwd);
 
   const context = buildFileContext({ cwd, files: input.files });
   const sandbox = await createSandbox({ sourceDir: cwd, files: input.files });
+  const keepSandbox = shouldKeepSandbox(input.keepSandbox);
 
   try {
-    const result = await runComposer({
+    const result = await runner({
       cwd: sandbox.sandboxDir,
       model: input.model,
       mode: input.mode,
+      timeoutMs: input.timeoutMs,
       prompt: askPrompt({
         prompt: input.prompt,
         cwd,
@@ -85,16 +97,18 @@ export async function handleAsk(input: z.infer<z.ZodObject<typeof askSchema>>) {
       })
     });
 
-    return jsonContent({
+    const value = {
       ...result,
-      sandbox: sandboxSummary(sandbox),
+      sandbox: sandboxSummary(sandbox, keepSandbox),
       includedFiles: context.includedFiles,
       omittedFiles: [...context.omittedFiles, ...sandbox.omittedFiles]
-    });
+    };
+
+    return jsonContent(value, isUnusableAdvisoryResult(result));
   } catch (error) {
     return jsonContent({ error: safeError(error) }, true);
   } finally {
-    cleanupSandbox(sandbox.sandboxDir);
+    if (!keepSandbox) cleanupSandbox(sandbox.sandboxDir);
   }
 }
 
@@ -165,6 +179,13 @@ export async function handleAgentWithRunner(
 }
 
 export async function handleUiReview(input: z.infer<z.ZodObject<typeof uiReviewSchema>>) {
+  return handleUiReviewWithRunner(input);
+}
+
+export async function handleUiReviewWithRunner(
+  input: z.infer<z.ZodObject<typeof uiReviewSchema>>,
+  runner: ComposerRunner = runComposer
+) {
   const cwd = input.cwd ? resolve(input.cwd) : process.cwd();
   if (input.cwd) assertDirectory(cwd);
 
@@ -172,11 +193,12 @@ export async function handleUiReview(input: z.infer<z.ZodObject<typeof uiReviewS
   const sandbox = input.cwd ? await createSandbox({ sourceDir: cwd, files: input.files }) : undefined;
 
   try {
-    const result = await runComposer({
+    const result = await runner({
       cwd: sandbox?.sandboxDir ?? process.cwd(),
       model: input.model,
       mode: "plan",
       images: input.images,
+      timeoutMs: input.timeoutMs,
       prompt: uiReviewPrompt({
         prompt: input.prompt,
         cwd: input.cwd ? cwd : undefined,
@@ -184,12 +206,14 @@ export async function handleUiReview(input: z.infer<z.ZodObject<typeof uiReviewS
       })
     });
 
-    return jsonContent({
+    const value = {
       ...result,
       sandbox: sandbox ? sandboxSummary(sandbox) : undefined,
       includedFiles: context.includedFiles,
       omittedFiles: [...context.omittedFiles, ...(sandbox?.omittedFiles ?? [])]
-    });
+    };
+
+    return jsonContent(value, isUnusableAdvisoryResult(result));
   } catch (error) {
     return jsonContent({ error: safeError(error) }, true);
   } finally {
@@ -203,16 +227,28 @@ function assertDirectory(path: string): void {
   }
 }
 
-function sandboxSummary(sandbox: { copiedFiles: string[]; copiedBytes: number }) {
+function sandboxSummary(
+  sandbox: { sandboxDir?: string; copiedFiles: string[]; copiedBytes: number },
+  keepSandbox = false
+) {
   return {
     copiedFiles: sandbox.copiedFiles.length,
-    copiedBytes: sandbox.copiedBytes
+    copiedBytes: sandbox.copiedBytes,
+    ...(keepSandbox ? { kept: true, path: sandbox.sandboxDir } : {})
   };
 }
 
 function cleanupSandbox(path: string): void {
   if (process.env.CODEX_COMPOSER_KEEP_SANDBOX === "1") return;
   rmSync(path, { recursive: true, force: true });
+}
+
+function shouldKeepSandbox(keepSandbox: boolean): boolean {
+  return keepSandbox || process.env.CODEX_COMPOSER_KEEP_SANDBOX === "1";
+}
+
+function isUnusableAdvisoryResult(result: { outputUsable?: boolean; timedOut?: boolean }): boolean {
+  return result.timedOut === true || result.outputUsable === false;
 }
 
 export function jsonContent(value: unknown, isError = false) {

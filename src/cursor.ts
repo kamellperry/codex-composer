@@ -2,6 +2,7 @@ import type { CommandPolicy, CursorRunOptions, CursorRunResult, EvidenceEvent } 
 import { resolveCursorAuth } from "./auth.js";
 import { redactSecrets, safeError } from "./redact.js";
 import { toSdkImages } from "./images.js";
+import { extractComposerOutput, type ComposerOutputSource } from "./output.js";
 
 export interface ComposerHealth {
   ok: boolean;
@@ -101,6 +102,7 @@ export async function runComposer(options: CursorRunOptions): Promise<CursorRunR
   const mode = options.mode ?? "plan";
   const startedAt = Date.now();
   const evidenceEvents: EvidenceEvent[] = [];
+  const streamCandidates: Array<{ source: ComposerOutputSource; text: string }> = [];
   const policyViolations = new Set<string>();
   const commandPolicy = options.commandPolicy ?? "advisory-forbid";
   const message =
@@ -129,6 +131,7 @@ export async function runComposer(options: CursorRunOptions): Promise<CursorRunR
         recordEvidence(step, evidenceEvents, policyViolations, commandPolicy);
       },
       onDelta: ({ update }: { update: unknown }) => {
+        collectStreamCandidate(update, streamCandidates);
         recordEvidence(update, evidenceEvents, policyViolations, commandPolicy);
       }
     } as never);
@@ -151,8 +154,17 @@ export async function runComposer(options: CursorRunOptions): Promise<CursorRunR
         });
       }
 
+      const output = extractComposerOutput({
+        runResultText: run.result ?? "",
+        streamCandidates
+      });
+
       return {
-        text: run.result ?? "",
+        text: output.text,
+        outputSource: output.source,
+        outputUsable: output.usable,
+        outputRejectedReason: output.rejectedReason,
+        outputCandidates: output.candidates,
         runId: run.id,
         agentId: run.agentId,
         status: "cancelled",
@@ -167,8 +179,20 @@ export async function runComposer(options: CursorRunOptions): Promise<CursorRunR
       };
     }
 
+    const runText = result.result ?? run.result ?? "";
+    const conversation = await readConversation(run, evidenceEvents, auth.apiKey);
+    const output = extractComposerOutput({
+      runResultText: runText,
+      conversation,
+      streamCandidates
+    });
+
     return {
-      text: result.result ?? run.result ?? "",
+      text: output.text,
+      outputSource: output.source,
+      outputUsable: output.usable,
+      outputRejectedReason: output.rejectedReason,
+      outputCandidates: output.candidates,
       runId: result.id ?? run.id,
       agentId: run.agentId,
       status: result.status,
@@ -183,6 +207,35 @@ export async function runComposer(options: CursorRunOptions): Promise<CursorRunR
     };
   } finally {
     agent.close();
+  }
+}
+
+async function readConversation(run: unknown, evidenceEvents: EvidenceEvent[], apiKey: string): Promise<unknown> {
+  const record = run as {
+    supports?: (operation: string) => boolean;
+    conversation?: () => Promise<unknown>;
+    unsupportedReason?: (operation: string) => string | undefined;
+  };
+
+  if (!record.supports?.("conversation") || !record.conversation) {
+    const reason = record.unsupportedReason?.("conversation");
+    if (reason) {
+      evidenceEvents.push({
+        type: "conversation_unavailable",
+        message: truncate(redactSecrets(reason), 300)
+      });
+    }
+    return undefined;
+  }
+
+  try {
+    return await record.conversation();
+  } catch (error) {
+    evidenceEvents.push({
+      type: "conversation_error",
+      message: safeError(error, [apiKey])
+    });
+    return undefined;
   }
 }
 
@@ -219,6 +272,39 @@ function recordEvidence(
 
   if (shouldRecordEvent(event)) {
     events.push(event);
+  }
+}
+
+function collectStreamCandidate(
+  value: unknown,
+  streamCandidates: Array<{ source: ComposerOutputSource; text: string }>
+): void {
+  if (streamCandidates.length >= 50 || !value || typeof value !== "object") return;
+
+  const record = value as Record<string, unknown>;
+  const type = firstString(record, ["type", "kind", "event", "status"])?.toLowerCase() ?? "";
+  if (type.includes("thinking")) return;
+
+  const text = firstString(record, ["text", "delta", "content", "message"]);
+  if (!text) return;
+
+  if (type.includes("task")) {
+    appendStreamCandidate(streamCandidates, "stream-task", text);
+  } else if (type.includes("text") || type.includes("assistant")) {
+    appendStreamCandidate(streamCandidates, "stream-assistant", text);
+  }
+}
+
+function appendStreamCandidate(
+  streamCandidates: Array<{ source: ComposerOutputSource; text: string }>,
+  source: ComposerOutputSource,
+  text: string
+): void {
+  const previous = streamCandidates.at(-1);
+  if (previous?.source === source) {
+    previous.text += text;
+  } else {
+    streamCandidates.push({ source, text });
   }
 }
 

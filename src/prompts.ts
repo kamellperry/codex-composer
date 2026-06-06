@@ -10,6 +10,8 @@ export function askPrompt(input: {
   return [
     "You are Cursor Composer 2.5 helping Codex.",
     "Do not edit files. Give concise, actionable guidance that Codex can execute.",
+    "Return the final answer as plain assistant text. Do not leave the useful answer only inside a plan, todo, or tool call.",
+    "Avoid planning tools unless they are truly necessary; if you use one, still write the final answer plainly afterward.",
     `Requested mode: ${input.mode}.`,
     `Original repository path: ${input.cwd}.`,
     "",
@@ -64,6 +66,8 @@ export function uiReviewPrompt(input: { prompt: string; cwd?: string; fileContex
   return [
     "You are Cursor Composer 2.5 reviewing UI and product design for Codex.",
     "Do not edit files. Focus on concrete visual, interaction, layout, and implementation recommendations.",
+    "Return the final review as plain assistant text. Do not leave the useful answer only inside a plan, todo, or tool call.",
+    "Avoid planning tools unless they are truly necessary; if you use one, still write the final answer plainly afterward.",
     input.cwd ? `Original repository path: ${input.cwd}.` : "",
     "",
     "Review request:",
