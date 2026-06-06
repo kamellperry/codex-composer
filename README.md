@@ -10,6 +10,8 @@ Codex Composer is a local Codex MCP plugin that lets Codex ask Cursor Composer 2
 - `composer_agent`: delegates a larger sandboxed implementation objective and returns diff, artifacts, and evidence.
 - `composer_ui_review`: sends screenshots/images plus context for UI and design critique.
 
+The plugin also bundles a `codex-composer` skill so Codex knows when and how to use these tools explicitly.
+
 ## Safety model
 
 Composer runs inside a temporary copy of the requested workspace. The real repo is not used as the Cursor agent's writable directory. Patch and agent modes return proposed work; Codex or a human applies it separately.

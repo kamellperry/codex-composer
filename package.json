@@ -1,6 +1,6 @@
 {
   "name": "codex-composer",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Codex MCP plugin for using Cursor Composer 2.5 as a safe coding and UI specialist.",
   "type": "module",
   "license": "MIT",
@@ -47,6 +47,7 @@
   "files": [
     "dist",
     "src",
+    "skills",
     ".codex-plugin",
     ".mcp.json",
     "README.md",

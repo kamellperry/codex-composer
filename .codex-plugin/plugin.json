@@ -1,6 +1,6 @@
 {
   "name": "codex-composer",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Use Cursor Composer 2.5 from Codex as a safe coding and UI specialist.",
   "author": {
     "name": "Kamell Perry",
@@ -15,6 +15,7 @@
     "coding-agent",
     "ui-review"
   ],
+  "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Codex Composer",
